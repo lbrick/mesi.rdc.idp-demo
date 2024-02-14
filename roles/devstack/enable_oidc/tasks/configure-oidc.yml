@@ -1,0 +1,70 @@
+---
+- name: Get keycloak client secret
+  community.general.keycloak_clientsecret_info:
+    client_id: "{{ oidc_client_id }}"
+    realm: "{{ oidc_realm_id }}"
+    auth_client_id: admin-cli
+    auth_keycloak_url: "https://{{ oidc_hostname }}"
+    auth_realm: master
+    auth_username: admin
+    auth_password: "{{ keycloak_admin_password }}"
+    validate_certs: false
+  register: keycloak_secret
+  
+- name: Set keycloak client secret fact for ondemand
+  set_fact:
+    oidc_client_secret: "{{ keycloak_secret.clientsecret_info.value }}"
+  no_log: true
+
+# Configure OIDC
+- name: install oidc
+  become: true
+  apt: name=libapache2-mod-auth-openidc
+
+- name: enable openidc mod
+  become: true
+  apache2_module:
+    name: auth_openidc
+  notify: restart apache
+
+# Configure Keystone
+- name: configure keystone vhost
+  become: true
+  blockinfile:
+    path: /etc/apache2/sites-available/keystone-wsgi-public.conf
+    block: |
+      OIDCClaimPrefix "OIDC-"
+      OIDCResponseType "id_token"
+      OIDCScope "openid email profile"
+      OIDCProviderMetadataURL "{{ oidc_provider_metadata_url }}"
+      OIDCClientID "{{ oidc_client_id }}"
+      OIDCClientSecret "{{ oidc_client_secret }}"
+      OIDCCryptoPassphrase openstack
+      OIDCRedirectURI http://{{ devstack_hostname }}/identity/v3/OS-FEDERATION/identity_providers/{{ keystone_idp_name }}/protocols/openid/auth
+      OIDCRedirectURI http://{{ devstack_hostname }}/identity/v3/auth/OS-FEDERATION/websso
+      OIDCRedirectURI http://{{ devstack_hostname }}/identity/v3/auth/OS-FEDERATION/identity_providers/{{ keystone_idp_name }}/protocols/openid/websso
+      <LocationMatch /identity/v3/OS-FEDERATION/identity_providers/.*?/protocols/openid/auth>
+        AuthType openid-connect
+        Require valid-user
+        LogLevel debug
+      </LocationMatch>
+      <Location ~ "/identity/v3/auth/OS-FEDERATION/websso/openid">
+        AuthType openid-connect
+        Require valid-user
+      </Location>
+      <Location ~ "/identity/v3/auth/OS-FEDERATION/identity_providers/{{ keystone_idp_name }}/protocols/openid/websso">
+        AuthType openid-connect
+        Require valid-user
+      </Location>
+  notify:
+    - restart apache
+
+- name: set keystone remote_id_attribute
+  ini_file:
+    create: no
+    dest: /etc/keystone/keystone.conf
+    section: federation
+    option: remote_id_attribute
+    value: HTTP_OIDC_ISS
+  notify:
+    - restart keystone

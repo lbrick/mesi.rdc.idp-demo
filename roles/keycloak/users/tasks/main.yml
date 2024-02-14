@@ -1,0 +1,75 @@
+---
+- name: Create a user user1
+  community.general.keycloak_user:
+    realm: "{{ oidc_realm_id }}"
+    auth_client_id: admin-cli
+    auth_keycloak_url: "https://{{ oidc_hostname }}"
+    auth_realm: master
+    auth_username: admin
+    auth_password: "{{ keycloak_admin_password }}"
+    validate_certs: false
+    username: "{{ item.username }}"
+    firstName: user1
+    lastName: user1
+    email: "{{ item.email }}"
+    enabled: true
+    emailVerified: false
+    credentials:
+        - type: password
+          value: "{{ item.password }}"
+          temporary: false
+    groups:
+        - name: "{{ project_name }}"
+          state: present
+    state: "{{ item.state }}"
+  with_dict :  "{{ keycloak_user_list }}"
+
+# # configuring keycloak
+# - name: "Create {{ oidc_realm_id }} Keycloak realm"
+#   community.general.keycloak_realm:
+#     auth_client_id: admin-cli
+#     auth_keycloak_url: http://127.0.0.1:8080
+#     auth_realm: master
+#     auth_username: admin
+#     auth_password: "{{ keycloak_admin_password }}"
+#     id: "{{ oidc_realm_id }}"
+#     realm: "{{ oidc_realm_id }}"
+#     login_with_email_allowed: false
+#     remember_me: true
+#     enabled: true
+#     state: present
+#   register: lsresult
+#   until: "lsresult is not failed"
+#   retries: 10
+#   delay: 10
+
+# - name: Add {{ oidc_client_id }} as a client
+#   community.general.keycloak_client:
+#     auth_client_id: admin-cli
+#     auth_keycloak_url: http://127.0.0.1:8080
+#     auth_realm: master
+#     auth_username: admin
+#     auth_password: "{{ keycloak_admin_password }}"
+#     state: present
+#     realm: "{{ oidc_realm_id }}"
+#     client_id: "{{ oidc_client_id }}"
+#     protocol: openid-connect
+#     public_client: false
+#     redirect_uris:
+#       - https://*
+#       - http://*
+#     implicit_flow_enabled: true
+#     protocol_mappers:
+#       - config:
+#           claim.name: "groups"
+#           id.token.claim: true
+#           access.token.claim: true
+#           userinfo.token.claim: true
+#         protocol: openid-connect
+#         name: groups
+#         protocolMapper: oidc-group-membership-mapper
+#   register: lsresult
+#   until: "lsresult is not failed"
+#   retries: 10
+#   delay: 10
+

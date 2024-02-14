@@ -1,0 +1,34 @@
+---
+- name: Check if Service Exists
+  stat: path=/etc/systemd/system/devstack@keystone.service
+  register: service_status
+
+- name: Bootstrapping Devstack node
+  block:
+    # netbase needed for eventlet
+    - name: install netbase
+      become: true
+      apt: name=netbase
+
+    - name: download devstack
+      become: true
+      git:
+        repo: https://opendev.org/openstack/devstack
+        dest: "{{ devstack_path }}"
+
+    - name: Change file ownership, group and permissions
+      become: true
+      ansible.builtin.file:
+        path: "{{ devstack_path }}"
+        recurse: yes
+        mode: 0777
+
+    - name: copy local.conf
+      template:
+        src: local.conf.j2
+        dest: "{{ devstack_path }}/local.conf"
+
+    - name: run devstack
+      command: "{{ devstack_path }}/stack.sh"
+  when:
+    - not service_status.stat.exists

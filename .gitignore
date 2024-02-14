@@ -1,0 +1,5 @@
+terraform/.terraform.lock.hcl
+terraform/.terraform/*
+scratch-pad.md
+terraform/terraform.tfvars
+vars/keycloak-config.yml

@@ -1,0 +1,6 @@
+---
+- name: Configure oidc
+  include_tasks: configure-oidc.yml
+
+- name: Configure Federation
+  include_tasks: configure-federation.yml

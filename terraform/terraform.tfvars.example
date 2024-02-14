@@ -1,0 +1,2 @@
+key_pair    = "NeSI_RDC_KEYPAIR_NAME"
+key_file    = "/path/to/nesi-rdc/private_key"

@@ -1,0 +1,31 @@
+---
+- name: Wait for Nodes
+  hosts: localhost
+  gather_facts: False
+  any_errors_fatal: "true"
+  roles:
+    - { role: infra/wait-for-hosts }
+
+- name: Pre-Check Defaults
+  become: yes
+  hosts: all
+  roles:
+    - { role: pre-checks/defaults }
+
+- name: Setup keycloak
+  become: yes
+  hosts: keycloaknode
+  vars_files:
+    - keycloak-config.yml
+  roles:
+    - { role: pre-checks/letsencrypt-apache2 }
+    - { role: pre-checks/letsencrypt-cert }
+    - { role: keycloak/install }
+
+- name: Setup devstack
+  hosts: devstacknode
+  vars_files:
+    - keycloak-config.yml
+  roles:
+    - { role: devstack/install }
+    - { role: devstack/enable_oidc }

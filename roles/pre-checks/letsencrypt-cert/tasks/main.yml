@@ -1,0 +1,58 @@
+---
+- name: Pre-Check LetsEncrypt Certs | Install acme-tiny
+  apt:
+    name:
+      - acme-tiny
+    state: present
+  become: true
+
+- name: Pre-Check LetsEncrypt Certs | Create required directories in /etc/letsencrypt
+  file:
+    path: "/etc/letsencrypt/{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: u=rwx,g=rx,o=rx
+  with_items:
+  - account
+  - certs
+  - csrs
+  - keys
+  become: true
+
+- name: Pre-Check LetsEncrypt Certs | Create .well-known/acme-challenge directory
+  file:
+    path: /var/www/html/.well-known/acme-challenge
+    state: directory
+    owner: root
+    group: root
+    mode: u=rwx,g=rx,o=rx
+
+- name: Pre-Check LetsEncrypt Certs | Check if cert has been generated
+  stat: 
+    path: "{{ letsencrypt_certs_dir }}/{{ domain_name }}.crt"
+  register: keycloak_cert
+
+- name: Pre-Check LetsEncrypt Certs | Generate LetsEncrypt cert
+  block:
+    - name: Pre-Check LetsEncrypt Certs | Generate a Let's Encrypt account key
+      shell: "if [ ! -f {{ letsencrypt_account_key }} ]; then openssl genrsa 4096 | sudo tee {{ letsencrypt_account_key }}; fi"
+
+    - name: Pre-Check LetsEncrypt Certs | Generate Let's Encrypt private key
+      shell: "openssl genrsa 4096 | sudo tee /etc/letsencrypt/keys/{{ domain_name }}.key"
+
+    - name: Pre-Check LetsEncrypt Certs | Generate Let's Encrypt CSR
+      shell: "openssl req -new -sha256 -key /etc/letsencrypt/keys/{{ domain_name }}.key -subj \"/CN={{ domain_name }}\" -reqexts SAN -config <(cat /etc/ssl/openssl.cnf <(printf \"\n[SAN]\nsubjectAltName=DNS:{{ domain_name }}\")) | sudo tee /etc/letsencrypt/csrs/{{ domain_name }}.csr"
+      args:
+        executable: /bin/bash
+
+    - name: Pre-Check LetsEncrypt Certs | Begin Let's Encrypt challenges
+      community.crypto.x509_certificate:
+        path: "{{ letsencrypt_certs_dir }}/{{ domain_name }}.crt"
+        csr_path: "{{ letsencrypt_csrs_dir }}/{{ domain_name }}.csr"
+        provider: acme
+        acme_accountkey_path: "{{ letsencrypt_account_key }}"
+        acme_challenge_path: /var/www/html/.well-known/acme-challenge    
+        acme_directory: "{{ acme_directory }}"
+      become: true
+  when: not keycloak_cert.stat.exists

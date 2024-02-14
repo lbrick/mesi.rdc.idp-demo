@@ -1,0 +1,170 @@
+---
+- name: Create a Keycloak {{ project_name }} group
+  community.general.keycloak_group:
+    realm: "{{ oidc_realm_id }}"
+    auth_client_id: admin-cli
+    auth_keycloak_url: "https://{{ oidc_hostname }}"
+    auth_realm: master
+    auth_username: admin
+    auth_password: "{{ keycloak_admin_password }}"
+    validate_certs: false
+    name: "{{ project_name }}"
+    state: present
+
+- name: install dbus
+  become: true
+  apt: name=dbus
+    
+- name: set keystone auth
+  ini_file:
+    create: yes
+    dest: /etc/keystone/keystone.conf
+    section: auth
+    option: methods
+    value: "password,token,openid"
+  notify:
+    - restart keystone
+    
+- name: set keystone trusted_dashboard
+  ini_file:
+    create: no
+    dest: /etc/keystone/keystone.conf
+    section: federation
+    option: trusted_dashboard
+    value: "http://{{ devstack_hostname }}/dashboard/auth/websso/"
+  notify:
+    - restart keystone
+
+- name: turn on keystone insecure_debug
+  ini_file:
+    create: no
+    dest: /etc/keystone/keystone.conf
+    section: DEFAULT
+    option: insecure_debug
+    value: true
+  notify:
+    - restart keystone
+
+- name: copy redirect template
+  become: true
+  copy:
+    src: /opt/stack/keystone/etc/sso_callback_template.html
+    dest: /etc/keystone/sso_callback_template.html
+    remote_src: true
+    
+# Configure Horizon
+- name: set horizon WEBSSO_ENABLED
+  lineinfile:
+    create: no
+    dest: /opt/stack/horizon/openstack_dashboard/local/local_settings.py
+    regexp: '^#?WEBSSO_ENABLED ?=.*$'
+    line: 'WEBSSO_ENABLED = True'
+  notify:
+    - restart apache
+    - restart keystone
+
+- name: set horizon WEBSSO_CHOICES
+  lineinfile:
+    create: no
+    dest: /opt/stack/horizon/openstack_dashboard/local/local_settings.py
+    regexp: '^#?WEBSSO_CHOICES ?= ?\(.*$'
+    line: 'WEBSSO_CHOICES = (("credentials", _("Keystone Credentials")), ("openid", _("OpenID Connect")),)'
+  notify:
+    - restart apache
+    - restart keystone
+
+- name: set horizon WEBSSO_IDP_MAPPING 
+  lineinfile:
+    dest: /opt/stack/horizon/openstack_dashboard/local/local_settings.py
+    line: 'WEBSSO_IDP_MAPPING = {"myidp_openid": ("myidp", "openid"),}'
+  notify:
+    - restart apache
+    - restart keystone
+
+- name: set horizon OPENSTACK_KEYSTONE_URL
+  lineinfile:
+    create: no
+    dest: /opt/stack/horizon/openstack_dashboard/local/local_settings.py
+    regexp: '^#?OPENSTACK_KEYSTONE_URL ?=.*$'
+    line: 'OPENSTACK_KEYSTONE_URL = "http://{{ devstack_hostname }}/identity/v3"'
+  notify:
+    - restart apache
+    - restart keystone
+
+# Refresh apache and shibd so that keystone and shibboleth are in working order before trying to use them
+- meta: flush_handlers
+# Create federated resources
+- name: install shade
+  become: true
+  pip:
+    name: shade
+
+- name: create member group for {{ project_name }}
+  openstack.cloud.identity_group:
+    cloud: devstack-admin
+    state: present
+    name: "{{ project_name }}_members"
+    description: "Demo Group"
+    domain_id: default
+  register: project_member_group
+
+- name: Create a project
+  openstack.cloud.project:
+    cloud: devstack-admin
+    description: "{{ project_name }} project"
+    domain: default
+    is_enabled: True
+    name: "{{ project_name }}"
+    state: present
+  register: openstack_project
+
+- name: add {{ project_name }} users to default domain
+  openstack.cloud.role_assignment:
+    cloud: devstack-admin
+    group: "{{ project_member_group.group.name }}"
+    role: 'member'
+    domain: default
+
+- name: Fetch a specific identity provider
+  openstack.cloud.federation_idp_info:
+    cloud: devstack-admin
+    name: "{{ keystone_idp_name }}"
+  register: openid_idp
+
+- debug:
+    var: openid_idp
+
+- name: Create an identity provider
+  openstack.cloud.federation_idp:
+    cloud: devstack-admin
+    name: "{{ keystone_idp_name }}"
+    domain_id: default
+    description: 'Keyclock IdP'
+    is_enabled: true
+    remote_ids:
+      - "{{ oidc_base_url }}"
+  when: openid_idp.identity_providers == []
+
+- name: Create a mapping
+  openstack.cloud.federation_mapping:
+    cloud: devstack-admin
+    name: "{{ project_name }}_{{ keystone_idp_name }}_mapping"
+    rules:
+    - local:
+      - user:
+          name: '{0}'
+          email: '{0}'
+      - group:
+          id: "{{ project_member_group.group.id }}"
+      remote:
+      - type: HTTP_OIDC_EMAIL
+      - type: OIDC-groups
+        any_one_of:
+        - "{{ project_name }}"
+
+- name: Create a federation protocol
+  openstack.cloud.keystone_federation_protocol:
+    cloud: devstack-admin
+    name: openid
+    idp: "{{ keystone_idp_name }}"
+    mapping: "{{ project_name }}_{{ keystone_idp_name }}_mapping"

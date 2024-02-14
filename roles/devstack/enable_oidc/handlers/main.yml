@@ -1,0 +1,10 @@
+---
+- name: restart apache
+  service:
+    name: apache2
+    state: restarted
+
+- name: restart keystone
+  service:
+    name: devstack@keystone
+    state: restarted

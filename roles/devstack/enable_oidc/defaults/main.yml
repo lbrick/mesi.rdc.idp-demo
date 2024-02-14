@@ -1,0 +1,14 @@
+---
+devstack_hostname: "{{ hostvars['devstacknode']['ansible_host'] | replace('.', '-') }}.sslip.io"
+
+oidc_hostname: "{{ hostvars['keycloaknode']['ansible_host'] | replace('.', '-') }}.sslip.io"
+oidc_realm_id: researchdevelopercloud
+oidc_client_id: rdc.idp
+
+keystone_idp_name: "rdc_idp"
+
+project_name: kahus-prod-zone
+
+# authentication settings
+oidc_base_url: https://{{ oidc_hostname }}/realms/{{ oidc_realm_id }}
+oidc_provider_metadata_url: "{{ oidc_base_url }}/.well-known/openid-configuration"

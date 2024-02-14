@@ -1,0 +1,28 @@
+---
+keycloak_user_list:
+  - username: jdoe
+    email: jdoe@example.com
+    password: "P@ssw0rd"
+    state: present
+  - username: jsmith
+    email: jsmith@example.com
+    password: "P@ssw0rd"
+    state: absent
+  - username: jbrown
+    email: jbrown@example.com
+    password: "P@ssw0rd"
+    state: present
+
+keycloak_admin_password: "CHANGEME_KEYCLOAK_ADMIN_PASSWORD"
+
+oidc_hostname: "{{ hostvars['keycloaknode']['ansible_host'] | replace('.', '-') }}.sslip.io"
+oidc_realm_id: researchdevelopercloud
+oidc_client_id: rdc.idp
+
+keystone_idp_name: "rdc_idp"
+
+project_name: kahus-prod-zone
+
+# authentication settings
+oidc_base_url: https://{{ oidc_hostname }}/realms/{{ oidc_realm_id }}
+oidc_provider_metadata_url: "{{ oidc_base_url }}/.well-known/openid-configuration"
