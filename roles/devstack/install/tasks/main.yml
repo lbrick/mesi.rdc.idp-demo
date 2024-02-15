@@ -15,6 +15,7 @@
       git:
         repo: https://opendev.org/openstack/devstack
         dest: "{{ devstack_path }}"
+        force: true
 
     - name: Change file ownership, group and permissions
       become: true
@@ -30,5 +31,7 @@
 
     - name: run devstack
       command: "{{ devstack_path }}/stack.sh"
+      environment:
+        FORCE: yes
   when:
     - not service_status.stat.exists
